@@ -7,7 +7,7 @@ local config = {
 ---@type neotest.Adapter
 local ZigNeotestAdapter = { name = "neotest-zig" }
 
-ZigNeotestAdapter.root = lib.files.match_root_pattern("main.zig")
+ZigNeotestAdapter.root = lib.files.match_root_pattern("*.zig")
 
 ---@param tree neotest.Tree
 ---@param spec neotest.RunSpec

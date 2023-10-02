@@ -1,6 +1,5 @@
 local async = require("neotest.async")
 local lib = require("neotest.lib")
-local base = require("plugins.neotest.neotest-base")
 
 local config = {
 }
@@ -23,7 +22,16 @@ function ZigNeotestAdapter.get_test_node_by_runspec(tree, spec)
 end
 
 function ZigNeotestAdapter.is_test_file(file_path)
-	return base.is_test_file(file_path)
+	return vim.endswith(file_path, ".zig")
+end
+
+function ZigNeotestAdapter.get_strategy_config(strategy, python, python_script, args)
+	local config = {
+		dap = nil, -- TODO: Implement DAP support.
+	}
+	if config[strategy] then
+		return config[strategy]()
+	end
 end
 
 ---@async

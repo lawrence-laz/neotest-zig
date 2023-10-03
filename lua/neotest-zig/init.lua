@@ -1,17 +1,18 @@
 local async = require("neotest.async")
 local lib = require("neotest.lib")
-
-local config = {
-}
+local log = require("neotest-zig.log")
 
 ---@type neotest.Adapter
-local ZigNeotestAdapter = { name = "neotest-zig" }
+local M = {
+	name = "neotest-zig",
+	version = "v1.0.3",
+}
 
-ZigNeotestAdapter.root = lib.files.match_root_pattern("*.zig")
+M.root = lib.files.match_root_pattern("*.zig")
 
 ---@param tree neotest.Tree
 ---@param spec neotest.RunSpec
-function ZigNeotestAdapter.get_test_node_by_runspec(tree, spec)
+function M.get_test_node_by_runspec(tree, spec)
 	for _, node in tree:iter_nodes() do
 		local test_node = node:data()
 		if test_node.path == spec.context.path and test_node.name == spec.context.name then
@@ -21,11 +22,11 @@ function ZigNeotestAdapter.get_test_node_by_runspec(tree, spec)
 	return nil
 end
 
-function ZigNeotestAdapter.is_test_file(file_path)
+function M.is_test_file(file_path)
 	return vim.endswith(file_path, ".zig")
 end
 
-function ZigNeotestAdapter.get_strategy_config(strategy, python, python_script, args)
+function M.get_strategy_config(strategy, python, python_script, args)
 	local config = {
 		dap = nil, -- TODO: Implement DAP support.
 	}
@@ -36,7 +37,7 @@ end
 
 ---@async
 ---@return neotest.Tree | nil
-function ZigNeotestAdapter.discover_positions(path)
+function M.discover_positions(path)
 	local query = [[
 		;;query
 		(TestDecl
@@ -49,7 +50,7 @@ end
 
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
-function ZigNeotestAdapter.build_spec(args)
+function M.build_spec(args)
 	local function get_script_path()
 		local str = debug.getinfo(2, "S").source:sub(2)
 		return str:match("(.*/)") or "./"
@@ -58,8 +59,17 @@ function ZigNeotestAdapter.build_spec(args)
 	local tree = args.tree:data()
 
 	if tree.type == "file" or tree.type == "dir" then
+		vim.schedule(function()
+			log.debug("Skipping", tree.path, "::", tree.name,
+				"because it's a file or a dir, not a test.")
+		end)
 		return nil
 	end
+
+
+	vim.schedule(function()
+		log.debug("Processing test ", tree.path, "::", tree.name)
+	end)
 
 	local test_results_path = async.fn.tempname()
 	local test_output_path = async.fn.tempname()
@@ -68,7 +78,7 @@ function ZigNeotestAdapter.build_spec(args)
 	    ' --test-filter ' .. tree.name ..
 	    ' --test-runner "' .. zig_test_runner_path .. '"' ..
 	    ' --test-cmd-bin --test-cmd "' .. test_results_path .. '" 2> "' .. test_output_path .. '"'
-	return {
+	local run_spec = {
 		command = test_command,
 		context = {
 			test_results_path = test_results_path,
@@ -77,6 +87,10 @@ function ZigNeotestAdapter.build_spec(args)
 			name = tree.name,
 		},
 	}
+	vim.schedule(function()
+		log.debug("Generated run spec:", run_spec)
+	end)
+	return run_spec
 end
 
 ---@async
@@ -84,9 +98,9 @@ end
 ---@param _ neotest.StrategyResult
 ---@param tree neotest.Tree
 ---@return neotest.Result[]
-function ZigNeotestAdapter.results(spec, _, tree)
+function M.results(spec, _, tree)
 	local results = {}
-	local test_node = ZigNeotestAdapter.get_test_node_by_runspec(tree, spec)
+	local test_node = M.get_test_node_by_runspec(tree, spec)
 	if test_node == nil then
 		error("Could not find a test node for '" .. spec.context.path .. ":" .. spec.context.name .. "'")
 	end
@@ -133,15 +147,29 @@ function ZigNeotestAdapter.results(spec, _, tree)
 	return results
 end
 
-setmetatable(ZigNeotestAdapter, {
-	__call = function()
-		return ZigNeotestAdapter
+M._enable_debug_log = function()
+	log.new({
+		use_console = true,
+		use_file = true,
+		level = "trace",
+	}, true)
+end
+
+setmetatable(M, {
+	__call = function(_, opts)
+		return M.setup(opts)
 	end,
 })
 
-ZigNeotestAdapter.setup = function(opts)
+M.setup = function(opts)
 	opts = opts or {}
-	return ZigNeotestAdapter
+	fooo = opts
+	if (opts.debug_log) then
+		M._enable_debug_log()
+	end
+
+	log.debug("Setup successful, running version ", M.version)
+	return M
 end
 
-return ZigNeotestAdapter
+return M

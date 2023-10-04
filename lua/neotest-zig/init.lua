@@ -52,9 +52,6 @@ end
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function M.build_spec(args)
-	local function get_script_path()
-		local str = debug.getinfo(2, "S").source:sub(2)
-		return str:match("(.*/)") or "./"
 	end
 
 	local tree = args.tree:data()
@@ -72,11 +69,13 @@ function M.build_spec(args)
 		log.debug("Processing test ", tree.path, "::", tree.name)
 	end)
 
-	local test_results_path = async.fn.tempname()
-	local test_output_path = async.fn.tempname()
-	local zig_test_runner_path = vim.fn.resolve(get_script_path() .. "../../zig/neotest-runner.zig")
+	local test_results_path = vim.fs.normalize(async.fn.tempname())
+	local test_output_path = vim.fs.normalize(async.fn.tempname())
+	local script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
+	local zig_test_runner_path = vim.fs.normalize(vim.fn.resolve(script_path .. "../../../../zig/neotest-runner.zig"))
+	local test_source_path = vim.fs.normalize(tree.name)
 	local test_command = 'zig test "' .. tree.path .. '"' ..
-	    ' --test-filter ' .. tree.name ..
+	    ' --test-filter ' .. test_source_path ..
 	    ' --test-runner "' .. zig_test_runner_path .. '"' ..
 	    ' --test-cmd-bin --test-cmd "' .. test_results_path .. '" 2> "' .. test_output_path .. '"'
 	local run_spec = {

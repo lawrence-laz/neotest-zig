@@ -14,60 +14,86 @@ M.root = lib.files.match_root_pattern("**/*.zig")
 ---@param tree neotest.Tree
 ---@param spec neotest.RunSpec
 function M.get_test_node_by_runspec(tree, spec)
+	log.debug("Entered `get_test_node_by_runspec` with", tree, spec)
 	for _, node in tree:iter_nodes() do
 		local test_node = node:data()
 		if test_node.path == spec.context.path and test_node.name == spec.context.name then
+			log.debug("Returning from `get_test_node_by_runspec` with", test_node)
 			return test_node
 		end
 	end
+	log.debug("Returning from `get_test_node_by_runspec` with nil")
 	return nil
 end
 
 function M.is_test_file(file_path)
-	return vim.endswith(file_path, ".zig")
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Entered `is_test_file` with", file_path)
+		end)
+	end
+	local result = vim.endswith(file_path, ".zig")
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Returning from `is_test_file` with", result)
+		end)
+	end
+	return result
 end
 
 function M.get_strategy_config(strategy, python, python_script, args)
+	log.debug("Entered `get_strategy_config` with", strategy, python, python_script, args)
 	local config = {
 		dap = nil, -- TODO: Implement DAP support.
 	}
 	if config[strategy] then
-		return config[strategy]()
+		local result = config[strategy]()
+		log.debug("Returning from `get_strategy_config` with", result)
+		return result
 	end
+	log.debug("Returning from `get_strategy_config` with nil")
 end
 
 ---@async
 ---@return neotest.Tree | nil
 function M.discover_positions(path)
+	log.debug("Entered `discover_positions` with", path)
 	local query = [[
 		;;query
 		(TestDecl
 			(STRINGLITERALSINGLE) @test.name
 		) @test.definition
 	]]
+	log.debug("Running query", query)
 	local positions = lib.treesitter.parse_positions(path, query, { nested_namespaces = true })
+	log.debug("Returning from `discover_positions` with", positions)
 	return positions
 end
 
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function M.build_spec(args)
-	end
-
-	local tree = args.tree:data()
-
-	if tree.type == "file" or tree.type == "dir" then
+	if M._is_debug_log_enabled then
 		vim.schedule(function()
-			log.debug("Skipping", tree.path, "::", tree.name,
-				"because it's a file or a dir, not a test.")
+			log.debug("Entered `build_spec` with", args)
 		end)
+	end
+	local tree = args.tree:data()
+	if tree.type == "file" or tree.type == "dir" then
+		if M._is_debug_log_enabled then
+			vim.schedule(function()
+				log.debug("Skipping", tree.path, "::", tree.name,
+					"because it's a file or a dir, not a test.")
+			end)
+		end
 		return nil
 	end
 
-
-	vim.schedule(function()
-		log.debug("Processing test ", tree.path, "::", tree.name)
-	end)
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Processing test ", tree.path, "::", tree.name)
+		end)
+	end
 
 	local test_results_path = vim.fs.normalize(async.fn.tempname())
 	local test_output_path = vim.fs.normalize(async.fn.tempname())
@@ -87,9 +113,11 @@ function M.build_spec(args)
 			name = tree.name,
 		},
 	}
-	vim.schedule(function()
-		log.debug("Generated run spec:", run_spec)
-	end)
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Returning from `build_spec` with", run_spec)
+		end)
+	end
 	return run_spec
 end
 
@@ -99,18 +127,35 @@ end
 ---@param tree neotest.Tree
 ---@return neotest.Result[]
 function M.results(spec, _, tree)
+	log.debug("Entered `results` with", spec, tree)
 	local results = {}
 	local test_node = M.get_test_node_by_runspec(tree, spec)
 	if test_node == nil then
 		error("Could not find a test node for '" .. spec.context.path .. ":" .. spec.context.name .. "'")
 	end
 
+	log.debug("Reading output file", spec.context.test_output_path)
 	local success_reading, test_output = pcall(lib.files.read, spec.context.test_output_path)
 	if success_reading == false then
 		error("Could not load test output file at path '" .. spec.context.test_output_path .. "'")
 	end
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Read output file", test_output)
+		end)
+	end
 
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Reading output file", spec.context.test_output_path)
+		end)
+	end
 	local success_reading, test_results_json = pcall(lib.files.read, spec.context.test_results_path)
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Read output file", test_results_json)
+		end)
+	end
 	if success_reading == false then
 		results[test_node.id] = {
 			status = "failed",
@@ -120,6 +165,11 @@ function M.results(spec, _, tree)
 		return results
 	end
 	local test_results = vim.json.decode(test_results_json)
+	if M._is_debug_log_enabled then
+		vim.schedule(function()
+			log.debug("Decoded results JSON", test_results)
+		end)
+	end
 	if test_results == nil then
 		error("Could not parse test results file at path '" .. spec.context.test_results_path .. "'")
 	end
@@ -144,15 +194,19 @@ function M.results(spec, _, tree)
 		output = spec.context.results_path,
 		short = "No results found",
 	}
+	log.debug("Returning from `results` with", results)
 	return results
 end
 
+M._is_debug_log_enabled = false
+M._debug_log_path = vim.fn.stdpath("data") .. "/neotest-zig.log"
 M._enable_debug_log = function()
 	log.new({
 		use_console = true,
 		use_file = true,
 		level = "trace",
 	}, true)
+	M._is_debug_log_enabled = true
 end
 
 setmetatable(M, {
@@ -163,14 +217,15 @@ setmetatable(M, {
 
 M.setup = function(opts)
 	opts = opts or {}
-	fooo = opts
 	if (opts.debug_log) then
 		M._enable_debug_log()
 	end
 
+	log.debug("Received options", opts)
+
 	require 'plenary.filetype'.add_table { extension = { zig = 'zig' } }
 
-	log.debug("Setup successful, running version ", M.version)
+	log.debug("Setup successful, running version", M.version)
 	return M
 end
 

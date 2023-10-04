@@ -24,8 +24,22 @@ A clear and concise description of what you expected to happen.
 ## **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
+## **Logs**
+Enable logs with:
+```lua
+require("neotest").setup({
+	adapters = {
+		require("neotest-zig") {
+			debug_log = true
+		}
+	}
+})
+```
+Read-only logs path is available in:
+`:lua =require'neotest-zig'._debug_log_path`
+
 ## **Environment**
- - OS:
+ - OS: 
  - Zig version:
  - Nvim version:
  - Neotest version:

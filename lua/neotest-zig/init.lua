@@ -5,7 +5,7 @@ local log = require("neotest-zig.log")
 ---@type neotest.Adapter
 local M = {
 	name = "neotest-zig",
-	version = "v1.0.3",
+	version = "v1.0.4",
 }
 
 -- No root logic, any file can contain tests

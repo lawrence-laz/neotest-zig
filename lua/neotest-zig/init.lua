@@ -169,6 +169,8 @@ M.setup = function(opts)
 		M._enable_debug_log()
 	end
 
+	require 'plenary.filetype'.add_table { extension = { zig = 'zig' } }
+
 	log.debug("Setup successful, running version ", M.version)
 	return M
 end

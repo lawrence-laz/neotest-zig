@@ -223,10 +223,11 @@ M.setup = function(opts)
 
 	log.debug("Received options", opts)
 
-	require 'plenary.filetype'.add_table { extension = { zig = 'zig' } }
-
 	log.debug("Setup successful, running version", M.version)
 	return M
 end
+
+-- Ensure plenary can recognize zig files, otherwise tree sitter functions in neotest fail.
+require 'plenary.filetype'.add_table { extension = { zig = 'zig' } }
 
 return M

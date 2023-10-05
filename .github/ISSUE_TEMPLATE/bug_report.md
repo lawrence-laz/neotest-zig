@@ -36,7 +36,7 @@ require("neotest").setup({
 })
 ```
 Read-only logs path is available in:
-`:lua =require'neotest-zig'._debug_log_path`
+`:lua =(vim.fn.stdpath("data") .. "/neotest-zig.log")`
 
 ## **Environment**
  - OS: 

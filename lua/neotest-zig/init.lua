@@ -61,7 +61,7 @@ function M.discover_positions(path)
 	local query = [[
 		;;query
 		(TestDecl
-			(STRINGLITERALSINGLE) @test.name
+			[(IDENTIFIER) (STRINGLITERALSINGLE)] @test.name
 		) @test.definition
 	]]
 	log.debug("Running query", query)

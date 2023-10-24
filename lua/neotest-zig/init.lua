@@ -8,8 +8,10 @@ local M = {
 	version = "v1.0.5",
 }
 
--- No root logic, any file can contain tests
-M.root = lib.files.match_root_pattern("**/*.zig")
+M.root = lib.files.match_root_pattern(
+	"*.zig", -- Search for zig files in current directory.
+	".git" -- Search for git repo.
+)
 
 ---@param tree neotest.Tree
 ---@param spec neotest.RunSpec

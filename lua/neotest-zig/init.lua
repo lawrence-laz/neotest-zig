@@ -35,6 +35,9 @@ function M.is_test_file(file_path)
 		end)
 	end
 	local result = vim.endswith(file_path, ".zig")
+	if (result) then
+		result = M._does_file_contain_tests(file_path)
+	end
 	if M._is_debug_log_enabled then
 		vim.schedule(function()
 			log.debug("Returning from `is_test_file` with", result)
@@ -56,18 +59,26 @@ function M.get_strategy_config(strategy, python, python_script, args)
 	log.debug("Returning from `get_strategy_config` with nil")
 end
 
+M._test_treesitter_query = [[
+	;;query
+	(TestDecl
+		[(IDENTIFIER) (STRINGLITERALSINGLE)] @test.name
+	) @test.definition
+]]
+
+function M._does_file_contain_tests(file_path)
+	local content = lib.files.read(file_path)
+	local tree = lib.treesitter.parse_positions_from_string(file_path, content, M._test_treesitter_query, {})
+	local contains_tests = next(tree._children) ~= nil
+	return contains_tests
+end
+
 ---@async
 ---@return neotest.Tree | nil
 function M.discover_positions(path)
 	log.debug("Entered `discover_positions` with", path)
-	local query = [[
-		;;query
-		(TestDecl
-			[(IDENTIFIER) (STRINGLITERALSINGLE)] @test.name
-		) @test.definition
-	]]
-	log.debug("Running query", query)
-	local positions = lib.treesitter.parse_positions(path, query, { nested_namespaces = true })
+	log.debug("Running query", M._test_treesitter_query)
+	local positions = lib.treesitter.parse_positions(path, M._test_treesitter_query, { nested_namespaces = true })
 	log.debug("Returning from `discover_positions` with", positions)
 	return positions
 end

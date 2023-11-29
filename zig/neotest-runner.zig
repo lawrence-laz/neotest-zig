@@ -73,7 +73,7 @@ pub fn main() !void {
             else => {
                 fail_count += 1;
                 if (@errorReturnTrace()) |stack_trace| {
-                    var last_frame_index: usize = @min(stack_trace.index, stack_trace.instruction_addresses.len) - 1;
+                    const last_frame_index = @min(stack_trace.index, stack_trace.instruction_addresses.len) - 1;
                     const return_address = stack_trace.instruction_addresses[last_frame_index];
                     const address = return_address - 1;
                     const module = try debug_info.getModuleForAddress(address);

@@ -105,7 +105,7 @@ pub fn main() !void {
     } else {
         std.debug.print("{d} passed; {d} skipped; {d} failed.\n", .{ passed_count, skip_count, fail_count });
     }
-    if (passed_count != 1 or skip_count != 1 or fail_count != 1) {
+    if (fail_count != 0) {
         std.process.exit(1);
     }
 }

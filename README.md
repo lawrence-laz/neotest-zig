@@ -2,7 +2,7 @@
 
 [Neotest](https://github.com/nvim-neotest/neotest) test runner for [Zig](https://github.com/ziglang/zig).
 
-https://github.com/lawrence-laz/neotest-zig/assets/8823448/2e959ca5-db2a-4eee-a422-48c11e853595
+https://github.com/lawrence-laz/neotest-zig/assets/8823448/9a003d0a-9ba4-4077-aa1b-3c0c90717734
 
 ## ⚙️ Requirements
 - [`zig` installed](https://ziglang.org/download/) and available in PATH

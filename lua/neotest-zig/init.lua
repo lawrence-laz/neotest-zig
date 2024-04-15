@@ -1,62 +1,124 @@
 local async = require("neotest.async")
 local lib = require("neotest.lib")
 local log = require("neotest-zig.log")
+local Path = require("plenary.path")
+local nio = require("nio")
+
+---@class ZigTestInput
+---@field test_name string
+---@field source_path string
+---@field output_path string
+
+---@class ZigTestError
+---@field message string
+---@field line? integer
+
+---@class ZigTestResult
+---@field test_name string
+---@field source_path string
+---@field output string Path to file containing full output data
+---@field status "passed"|"failed"|"skipped"
+---@field short string Shortened output string
+---@field errors ZigTestError[]
 
 ---@type neotest.Adapter
 local M = {
-	name = "neotest-zig",
-	version = "v1.0.5",
+    name = "neotest-zig",
+    version = "v1.1.0",
 }
 
-M.root = lib.files.match_root_pattern(
-	"*.zig", -- Search for zig files in current directory.
-	".git" -- Search for git repo.
+function string.starts(String, Start)
+    return string.sub(String, 1, string.len(Start)) == Start
+end
+
+--- Create a function that will take directory and attempt to match the provided
+--- glob patterns against the contents of the directory.
+--- This is a modified copy of a standard neotest function,
+--- which avoids checking directories above the current working directory.
+---@param ... string Patterns to match e.g "*.py"
+---@return fun(path: string): string | nil
+function M.match_root_pattern(...)
+    local patterns = vim.tbl_flatten({ ... })
+    return function(start_path)
+        log.trace("Entered match_root_pattern with", start_path)
+        local start_parents = Path:new(start_path):parents()
+        local home = os.getenv("HOME")
+        local potential_roots = lib.files.is_dir(start_path)
+            and vim.list_extend({ start_path }, start_parents)
+            or start_parents
+        local valid_roots = {}
+        for index, value in ipairs(potential_roots) do
+            if value == home then
+                break
+            end
+            if not string.starts(vim.fs.normalize(value), vim.fs.normalize(vim.loop.cwd())) then
+                break
+            end
+            log.trace("Found a valid root", value)
+            valid_roots[index] = value
+        end
+        for _, path in ipairs(valid_roots) do
+            for _, pattern in ipairs(patterns) do
+                for _, p in ipairs(nio.fn.glob(Path:new(path, pattern).filename, true, true)) do
+                    if lib.files.exists(p) then
+                        log.trace("Return from match_root_pattern with", path)
+                        return path
+                    end
+                end
+            end
+        end
+    end
+end
+
+M.root = M.match_root_pattern(
+    "**/*.zig" -- Search for zig files in current directory.
 )
+
+M.filter_dir = function(name, rel_path, root)
+    log.trace("Entered filter_dir with", name, rel_path, root);
+    if name == "zig-cache" or name == "zig-out" then
+        return false
+    else
+        return true
+    end
+end
 
 ---@param tree neotest.Tree
 ---@param spec neotest.RunSpec
 function M.get_test_node_by_runspec(tree, spec)
-	log.debug("Entered `get_test_node_by_runspec` with", tree, spec)
-	for _, node in tree:iter_nodes() do
-		local test_node = node:data()
-		if test_node.path == spec.context.path and test_node.name == spec.context.name then
-			log.debug("Returning from `get_test_node_by_runspec` with", test_node)
-			return test_node
-		end
-	end
-	log.debug("Returning from `get_test_node_by_runspec` with nil")
-	return nil
+    log.debug("Entered `get_test_node_by_runspec` with", tree, spec)
+    for _, node in tree:iter_nodes() do
+        local test_node = node:data()
+        if test_node.path == spec.context.path and test_node.name == spec.context.name then
+            log.debug("Returning from `get_test_node_by_runspec` with", test_node)
+            return test_node
+        end
+    end
+    log.debug("Returning from `get_test_node_by_runspec` with nil")
+    return nil
 end
 
 function M.is_test_file(file_path)
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Entered `is_test_file` with", file_path)
-		end)
-	end
-	local result = vim.endswith(file_path, ".zig")
-	if (result) then
-		result = M._does_file_contain_tests(file_path)
-	end
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Returning from `is_test_file` with", result)
-		end)
-	end
-	return result
+    log.debug("Entered `is_test_file` with", file_path)
+    local result = vim.endswith(file_path, ".zig")
+    if (result) then
+        result = M._does_file_contain_tests(file_path)
+    end
+    log.debug("Returning from `is_test_file` with", result)
+    return result
 end
 
 function M.get_strategy_config(strategy, python, python_script, args)
-	log.debug("Entered `get_strategy_config` with", strategy, python, python_script, args)
-	local config = {
-		dap = nil, -- TODO: Implement DAP support.
-	}
-	if config[strategy] then
-		local result = config[strategy]()
-		log.debug("Returning from `get_strategy_config` with", result)
-		return result
-	end
-	log.debug("Returning from `get_strategy_config` with nil")
+    log.debug("Entered `get_strategy_config` with", strategy, python, python_script, args)
+    local config = {
+        dap = nil, -- TODO: Implement debugging via DAP
+    }
+    if config[strategy] then
+        local result = config[strategy]()
+        log.debug("Returning from `get_strategy_config` with", result)
+        return result
+    end
+    log.debug("Returning from `get_strategy_config` with nil")
 end
 
 M._test_treesitter_query = [[
@@ -67,71 +129,245 @@ M._test_treesitter_query = [[
 ]]
 
 function M._does_file_contain_tests(file_path)
-	local content = lib.files.read(file_path)
-	local tree = lib.treesitter.parse_positions_from_string(file_path, content, M._test_treesitter_query, {})
-	local contains_tests = next(tree._children) ~= nil
-	return contains_tests
+    local content = lib.files.read(file_path)
+    local tree = lib.treesitter.parse_positions_from_string(file_path, content, M._test_treesitter_query, {})
+    local contains_tests = next(tree._children) ~= nil
+    return contains_tests
 end
 
 ---@async
 ---@return neotest.Tree | nil
 function M.discover_positions(path)
-	log.debug("Entered `discover_positions` with", path)
-	log.debug("Running query", M._test_treesitter_query)
-	local positions = lib.treesitter.parse_positions(path, M._test_treesitter_query, { nested_namespaces = true })
-	log.debug("Returning from `discover_positions` with", positions)
-	return positions
+    log.debug("Entered `discover_positions` with", path)
+    log.debug("Running query", M._test_treesitter_query)
+    local positions = lib.treesitter.parse_positions(path, M._test_treesitter_query, { nested_namespaces = true })
+    log.debug("Returning from `discover_positions` with", positions)
+    return positions
+end
+
+function M._get_temp_file_path()
+    return vim.fs.normalize(async.fn.tempname())
+end
+
+---@param args neotest.RunArgs
+---@param build_file_path string
+---@return neotest.RunSpec | nil
+function M._build_spec_with_buildfile(args, build_file_path)
+    log.debug("Entered `_build_spec_with_buildfile`")
+    local neotest_inputs = {}
+    for _, node in args.tree:iter_nodes() do
+        if node:data().type ~= "test" then
+            goto continue
+        end
+
+        local test_name = M._get_zig_symbol_name_from_node(node)
+
+        table.insert(neotest_inputs, {
+            test_name = test_name,
+            source_path = node:data().path,
+            output_path = M._get_temp_file_path(),
+        })
+        ::continue::
+    end
+
+    log.debug("Processing tests from '", args.tree:data().path, "::", args.tree:data().name,
+        "', found ",
+        #neotest_inputs,
+        " tests")
+    log.debug("Inputs are:", neotest_inputs)
+
+    local neotest_input_path = M._get_temp_file_path()
+    local neotest_input_json = vim.json.encode(neotest_inputs)
+    local success_writing, test_results_json = pcall(lib.files.write, neotest_input_path, neotest_input_json)
+    if not success_writing then
+        log.error("Could not write into:", neotest_input_path)
+        return
+    end
+
+    log.debug("Successfully wrote test input into", neotest_input_path)
+
+    local neotest_results_path = M._get_temp_file_path()
+    vim.loop.fs_mkdir(neotest_results_path, 493) -- Ensure tests results dir before running tests.
+    local this_script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
+    local source_neotest_build_file_path = vim.fs.normalize(
+        vim.fn.resolve(this_script_path .. "../../../../zig/neotest_build.zig"))
+    local test_runner_path = vim.fs.normalize(
+        vim.fn.resolve(this_script_path .. "../../../../zig/neotest_runner.zig"))
+
+    local build_file_dir_path = build_file_path:match("(.*[/\\])")
+    local target_neotest_build_file_path = build_file_dir_path .. "neotest_build.zig";
+
+    local success, errmsg = vim.loop.fs_copyfile(source_neotest_build_file_path, target_neotest_build_file_path)
+    if not success then
+        log.error("Could not copy from", source_neotest_build_file_path, "to", target_neotest_build_file_path)
+        return
+    end
+
+    -- Test runner logs have a separate directory, because
+    -- Zig may launch multiple processes, where each process
+    -- would write into a separate log file.
+    local test_runner_logs_dir_path = M._get_temp_file_path()
+    vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
+
+    local zig_test_command = 'zig build test' ..
+        ' --build-file "' .. target_neotest_build_file_path .. '"' ..
+        ' -Dneotest-runner="' .. test_runner_path .. '"' ..
+        ' -- ' ..
+        ' --neotest-input-path "' .. neotest_input_path .. '"' ..
+        ' --neotest-results-path "' .. neotest_results_path .. '"' ..
+        ' --test-runner-logs-path "' .. test_runner_logs_dir_path .. '"' ..
+        ' --test-runner-log-level "' .. log.get_log_level() .. '"'
+
+    local run_spec = {
+        command = zig_test_command,
+        context = {
+            test_results_dir_path = neotest_results_path,
+            temp_neotest_build_file_path = target_neotest_build_file_path,
+        },
+    }
+    return run_spec
+end
+
+---@param args neotest.RunArgs
+---@return neotest.RunSpec | nil
+function M._build_spec_without_buildfile(args)
+    log.debug("Entered `_build_spec_without_buildfile`")
+    local neotest_inputs = {}
+    local source_path = ""
+
+    if args.tree:data().type ~= "test" then
+        for _, node in args.tree:iter_nodes() do
+            if node:data().type ~= "test" then
+                goto continue
+            end
+
+            local test_name = M._get_zig_symbol_name_from_node(node)
+            source_path = node:data().path
+            table.insert(neotest_inputs, {
+                test_name = test_name,
+                source_path = node:data().path,
+                output_path = M._get_temp_file_path(),
+            })
+            ::continue::
+        end
+    else
+        local node = args.tree
+        local test_name = M._get_zig_symbol_name_from_node(node)
+        source_path = node:data().path
+        table.insert(neotest_inputs, {
+            test_name = test_name,
+            source_path = node:data().path,
+            output_path = M._get_temp_file_path(),
+        })
+    end
+
+    log.debug("Processing tests from '", args.tree:data().path, "::", args.tree:data().name,
+        "', found ",
+        #neotest_inputs,
+        " tests")
+    log.debug("Inputs are:", neotest_inputs)
+
+    local neotest_input_path = M._get_temp_file_path()
+    local neotest_input_json = vim.json.encode(neotest_inputs)
+    local success_writing, test_results_json = pcall(lib.files.write, neotest_input_path, neotest_input_json)
+    if not success_writing then
+        log.fatal("Could not write into:", neotest_input_path)
+        return
+    end
+
+    local neotest_results_path = M._get_temp_file_path()
+    vim.loop.fs_mkdir(neotest_results_path, 493)
+    local this_script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
+    local zig_test_runner_path = vim.fs.normalize(
+        vim.fn.resolve(this_script_path .. "../../../../zig/neotest_runner.zig"))
+
+    local test_runner_logs_dir_path = M._get_temp_file_path()
+    vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
+
+    local zig_test_command = 'zig test ' ..
+        source_path ..
+        ' --test-runner "' .. zig_test_runner_path .. '" ' ..
+        ' --test-cmd-bin' ..
+        ' --test-cmd "' .. '--neotest-input-path' .. '"' ..
+        ' --test-cmd "' .. neotest_input_path .. '"' ..
+        ' --test-cmd "' .. '--neotest-results-path' .. '"' ..
+        ' --test-cmd "' .. neotest_results_path .. '"' ..
+        ' --test-cmd "' .. '--neotest-source-path' .. '"' ..
+        ' --test-cmd "' .. source_path .. '"' ..
+        ' --test-cmd "' .. '--test-runner-logs-path' .. '"' ..
+        ' --test-cmd "' .. test_runner_logs_dir_path .. '"' ..
+        ' --test-cmd "' .. '--test-runner-log-level' .. '"' ..
+        ' --test-cmd "' .. log.get_log_level() .. '"'
+
+    local run_spec = {
+        command = zig_test_command,
+        context = {
+            test_results_dir_path = neotest_results_path,
+        },
+    }
+    return run_spec
 end
 
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function M.build_spec(args)
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Entered `build_spec` with", args)
-		end)
-	end
-	local tree = args.tree:data()
-	if tree.type == "file" or tree.type == "dir" then
-		if M._is_debug_log_enabled then
-			vim.schedule(function()
-				log.debug("Skipping", tree.path, "::", tree.name,
-					"because it's a file or a dir, not a test.")
-			end)
-		end
-		return nil
-	end
+    log.debug("Entered `build_spec` with", args)
 
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Processing test ", tree.path, "::", tree.name)
-		end)
-	end
+    local run_spec = nil
+    local root_path = args.tree:root():data().path
+    local build_file_path = require("nio").fn.glob(root_path .. "**/build.zig")
+    local use_build_file = build_file_path ~= nil and build_file_path ~= ""
 
-	local test_results_path = vim.fs.normalize(async.fn.tempname())
-	local test_output_path = vim.fs.normalize(async.fn.tempname())
-	local script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
-	local zig_test_runner_path = vim.fs.normalize(vim.fn.resolve(script_path .. "../../../../zig/neotest-runner.zig"))
-	local test_source_path = vim.fs.normalize(tree.name)
-	local test_command = 'zig test "' .. tree.path .. '"' ..
-	    ' --test-filter ' .. test_source_path ..
-	    ' --test-runner "' .. zig_test_runner_path .. '"' ..
-	    ' --test-cmd-bin --test-cmd "' .. test_results_path .. '" 2> "' .. test_output_path .. '"'
-	local run_spec = {
-		command = test_command,
-		context = {
-			test_results_path = test_results_path,
-			test_output_path = test_output_path,
-			path = tree.path,
-			name = tree.name,
-		},
-	}
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Returning from `build_spec` with", run_spec)
-		end)
-	end
-	return run_spec
+    if use_build_file then
+        run_spec = M._build_spec_with_buildfile(args, build_file_path)
+    else
+        if args.tree:data().type == "file" then
+            run_spec = M._build_spec_without_buildfile(args)
+        elseif args.tree:data().type == "test" then
+            run_spec = M._build_spec_without_buildfile(args)
+        else
+            -- Skipping non-file/non-test nodes, since `zig test` runs on file-level only.
+            -- This will make neotest core call the function again with descending files.
+            return nil
+        end
+    end
+
+    log.debug("Returning from `build_spec` with", run_spec)
+    return run_spec
+end
+
+---@param node neotest.Tree
+---@return string
+function M._get_zig_symbol_name_from_node(node)
+    -- Tests in Zig can be named either by a string, or by another declaration.
+    local test_name = ""
+    local test_name_starts_with_doublequote = string.sub(node:data().name, 1, 1) == "\""
+    if test_name_starts_with_doublequote then
+        test_name = "test." .. string.sub(node:data().name, 2, string.len(node:data().name) - 1)
+    else
+        test_name = "decltest." .. node:data().name
+    end
+    return test_name
+end
+
+---@param source_path string
+---@param test_name string
+---@param zig_test_results ZigTestResult[]
+---@return neotest.Result?
+function M._get_neotest_result(source_path, test_name, zig_test_results)
+    for _, zig_test_result in ipairs(zig_test_results) do
+        if zig_test_result.test_name == test_name and zig_test_result.source_path == source_path then
+            ---@type neotest.Result
+            local result = {
+                status = zig_test_result.status,
+                short = zig_test_result.short,
+                errors = zig_test_result.errors or {},
+                output = zig_test_result.output,
+            }
+            return result
+        end
+    end
+    return nil
 end
 
 ---@async
@@ -140,104 +376,80 @@ end
 ---@param tree neotest.Tree
 ---@return neotest.Result[]
 function M.results(spec, _, tree)
-	log.debug("Entered `results` with", spec, tree)
-	local results = {}
-	local test_node = M.get_test_node_by_runspec(tree, spec)
-	if test_node == nil then
-		error("Could not find a test node for '" .. spec.context.path .. ":" .. spec.context.name .. "'")
-	end
+    log.trace("Entered `results` with", spec, tree)
 
-	log.debug("Reading output file", spec.context.test_output_path)
-	local success_reading, test_output = pcall(lib.files.read, spec.context.test_output_path)
-	if success_reading == false then
-		error("Could not load test output file at path '" .. spec.context.test_output_path .. "'")
-	end
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Read output file", test_output)
-		end)
-	end
+    if spec.context.temp_neotest_build_file_path then
+        local success = pcall(os.remove, spec.context.temp_neotest_build_file_path)
+        if not success then
+            log.debug("Could not delete `temp_neotest_build_file_path`", spec.context.temp_neotest_build_file_path)
+        end
+    end
 
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Reading output file", spec.context.test_output_path)
-		end)
-	end
-	local success_reading, test_results_json = pcall(lib.files.read, spec.context.test_results_path)
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Read output file", test_results_json)
-		end)
-	end
-	if success_reading == false then
-		results[test_node.id] = {
-			status = "failed",
-			output = spec.context.test_output_path,
-			short = "Test failed",
-		}
-		return results
-	end
-	local test_results = vim.json.decode(test_results_json)
-	if M._is_debug_log_enabled then
-		vim.schedule(function()
-			log.debug("Decoded results JSON", test_results)
-		end)
-	end
-	if test_results == nil then
-		error("Could not parse test results file at path '" .. spec.context.test_results_path .. "'")
-	end
+    local neotest_results = {}
 
-	for _, result_table in ipairs(test_results) do
-		results[test_node.id] = {
-			status = result_table.status,
-			output = spec.context.test_output_path,
-			short = result_table.error_message,
-			errors = {
-				{
-					message = result_table.error_message,
-					line = result_table.line - 1
-				}
-			}
-		}
-		return results
-	end
+    if not lib.files.exists(spec.context.test_results_dir_path) then
+        log.fatal("Dir `test_results_dir_path` does not exists", spec.context.test_results_dir_path)
+        return neotest_results
+    end
 
-	results[test_node.id] = {
-		status = "Skipped",
-		output = spec.context.results_path,
-		short = "No results found",
-	}
-	log.debug("Returning from `results` with", results)
-	return results
-end
+    local zig_test_results = {}
+    for test_results_file_name, type in vim.fs.dir(spec.context.test_results_dir_path) do
+        log.trace("Found a ", type, "named", test_results_file_name, "in results dir");
+        if (type ~= "file") then
+            goto continue
+        end
 
-M._is_debug_log_enabled = false
-M._debug_log_path = vim.fn.stdpath("data") .. "/neotest-zig.log"
-M._enable_debug_log = function()
-	log.new({
-		use_console = true,
-		use_file = true,
-		level = "trace",
-	}, true)
-	M._is_debug_log_enabled = true
+        local test_results_file_path = vim.fs.joinpath(spec.context.test_results_dir_path, test_results_file_name)
+
+        log.trace("Trying to open results file", test_results_file_path)
+        local success, test_results_json = pcall(lib.files.read, test_results_file_path)
+        if not success then
+            log.error("Could not open results file", test_results_file_path)
+            goto continue
+        end
+
+        local test_results = vim.json.decode(test_results_json, { luanil = { object = true, array = true } })
+        log.trace("Decoded JSON", test_results)
+
+        vim.list_extend(zig_test_results, test_results)
+
+        ::continue::
+    end
+
+
+    for _, node in tree:iter_nodes() do
+        if node:data().type ~= "test" then
+            goto continue
+        end
+
+        local test_name = M._get_zig_symbol_name_from_node(node)
+        neotest_results[node:data().id] = M._get_neotest_result(node:data().path, test_name, zig_test_results)
+            or {
+                status = "skipped",
+                short = "No results found. Make sure the test is included in build.",
+                errors = {},
+            }
+
+        ::continue::
+    end
+
+    log.trace("Returning from `results` with", neotest_results)
+
+    return neotest_results
 end
 
 setmetatable(M, {
-	__call = function(_, opts)
-		return M.setup(opts)
-	end,
+    __call = function(_, opts)
+        return M.setup(opts)
+    end,
 })
 
 M.setup = function(opts)
-	opts = opts or {}
-	if (opts.debug_log) then
-		M._enable_debug_log()
-	end
+    opts = opts or {}
 
-	log.debug("Received options", opts)
-
-	log.debug("Setup successful, running version", M.version)
-	return M
+    log.debug("Received options", opts)
+    log.info("Setup successful, running version", M.version)
+    return M
 end
 
 -- Ensure plenary can recognize zig files, otherwise tree sitter functions in neotest fail.

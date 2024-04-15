@@ -1,152 +1,149 @@
--- log.lua
---
--- Inspired by rxi/log.lua
--- Modified by tjdevries and can be found at github.com/tjdevries/vlog.nvim
---
--- This library is free software; you can redistribute it and/or modify it
--- under the terms of the MIT license. See LICENSE for details.
-
-local default_config = {
-	plugin = 'neotest-zig',
-
-	-- Should print the output to neovim while running
-	use_console = false,
-
-	-- Should highlighting be used in console (using echohl)
-	highlights = true,
-
-	-- Should write to a file
-	use_file = false,
-
-	-- Any messages above this level will be logged.
-	level = "fatal",
-
-	-- Level configuration
-	modes = {
-		{ name = "trace", hl = "Comment", },
-		{ name = "debug", hl = "Comment", },
-		{ name = "info",  hl = "None", },
-		{ name = "warn",  hl = "WarningMsg", },
-		{ name = "error", hl = "ErrorMsg", },
-		{ name = "fatal", hl = "ErrorMsg", },
-	},
-
-	-- Can limit the number of decimals displayed for floats
-	float_precision = 0.01,
-}
-
--- {{{ NO NEED TO CHANGE
 local log = {}
 
-local unpack = unpack or table.unpack
+local log_levels = vim.log.levels
 
-log.new = function(config, standalone)
-	config = vim.tbl_deep_extend("force", default_config, config)
+--- Log level dictionary with reverse lookup as well.
+---
+--- Can be used to lookup the number from the name or the name from the number.
+--- Levels by name: "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"
+--- Level numbers begin with "TRACE" at 0
+--- @type table<string|integer, string|integer>
+--- @nodoc
+log.levels = vim.deepcopy(log_levels)
 
-	local outfile = string.format('%s/%s.log', vim.api.nvim_call_function('stdpath', { 'data' }), config.plugin)
-
-	local obj
-	if standalone then
-		obj = log
-	else
-		obj = {}
-	end
-
-	local levels = {}
-	for i, v in ipairs(config.modes) do
-		levels[v.name] = i
-	end
-
-	local round = function(x, increment)
-		increment = increment or 1
-		x = x / increment
-		return (x > 0 and math.floor(x + .5) or math.ceil(x - .5)) * increment
-	end
-
-	local make_string = function(...)
-		local t = {}
-		for i = 1, select('#', ...) do
-			local x = select(i, ...)
-
-			if type(x) == "number" and config.float_precision then
-				x = tostring(round(x, config.float_precision))
-			elseif type(x) == "table" then
-				x = vim.inspect(x)
-			else
-				x = tostring(x)
-			end
-
-			t[#t + 1] = x
-		end
-		return table.concat(t, " ")
-	end
-
-
-	local log_at_level = function(level, level_config, message_maker, ...)
-		-- Return early if we're below the config.level
-		if level < levels[config.level] then
-			return
-		end
-		local nameupper = level_config.name:upper()
-
-		local msg = message_maker(...)
-		local info = debug.getinfo(2, "Sl")
-		local lineinfo = info.short_src .. ":" .. info.currentline
-
-		-- Output to console
-		if config.use_console then
-			local console_string = string.format(
-				"[%-6s%s] %s: %s",
-				nameupper,
-				os.date("%H:%M:%S"),
-				lineinfo,
-				msg
-			)
-
-			if config.highlights and level_config.hl then
-				vim.cmd(string.format("echohl %s", level_config.hl))
-			end
-
-			local split_console = vim.split(console_string, "\n")
-			for _, v in ipairs(split_console) do
-				vim.cmd(string.format([[echom "[%s] %s"]], config.plugin, vim.fn.escape(v, '"')))
-			end
-
-			if config.highlights and level_config.hl then
-				vim.cmd("echohl NONE")
-			end
-		end
-
-		-- Output to log file
-		if config.use_file then
-			local fp = io.open(outfile, "a")
-			local str = string.format("[%-6s%s] %s: %s\n",
-				nameupper, os.date(), lineinfo, msg)
-			fp:write(str)
-			fp:close()
-		end
-	end
-
-	for i, x in ipairs(config.modes) do
-		obj[x.name] = function(...)
-			return log_at_level(i, x, make_string, ...)
-		end
-
-		obj[("fmt_%s"):format(x.name)] = function()
-			return log_at_level(i, x, function(...)
-				local passed = { ... }
-				local fmt = table.remove(passed, 1)
-				local inspected = {}
-				for _, v in ipairs(passed) do
-					table.insert(inspected, vim.inspect(v))
-				end
-				return string.format(fmt, unpack(inspected))
-			end)
-		end
-	end
+-- Log level is same as in neotest
+local current_log_level = function()
+    return require("neotest.config").log_level
 end
 
-log.new(default_config, true)
--- }}}
+local log_date_format = '%F %H:%M:%S'
+
+local function format_func(arg)
+    return vim.inspect(arg, { newline = '\n' })
+end
+
+local function notify(msg, level)
+    if vim.in_fast_event() then
+        vim.schedule(function()
+            vim.notify(msg, level)
+        end)
+    else
+        vim.notify(msg, level)
+    end
+end
+
+local logfilename = vim.fs.joinpath(vim.fn.stdpath('log'), 'neotest-zig.log')
+
+vim.fn.mkdir(vim.fn.stdpath('log'), 'p')
+
+--- Returns the log filename.
+---@return string log filename
+function log.get_filename()
+    return logfilename
+end
+
+--- @type file*?, string?
+local logfile, openerr
+
+--- Opens log file. Returns true if file is open, false on error
+local function open_logfile()
+    -- Try to open file only once
+    if logfile then
+        return true
+    end
+    if openerr then
+        return false
+    end
+
+    logfile, openerr = io.open(logfilename, 'a+')
+    if not logfile then
+        local err_msg = string.format('Failed to open neotest-zig log file: %s', openerr)
+        notify(err_msg, log_levels.ERROR)
+        return false
+    end
+
+    local log_info = vim.uv.fs_stat(logfilename)
+    if log_info and log_info.size > 1e9 then
+        local warn_msg = string.format(
+            'neotest-zig log is large (%d MB): %s',
+            log_info.size / (1000 * 1000),
+            logfilename
+        )
+        notify(warn_msg)
+    end
+
+    -- Start message for logging
+    logfile:write(string.format('[START][%s] neotest-zig logging initiated\n', os.date(log_date_format)))
+    return true
+end
+
+for level, levelnr in pairs(log_levels) do
+    -- Also export the log level on the root object.
+    log[level] = levelnr
+
+    -- Add a reverse lookup.
+    log.levels[levelnr] = level
+end
+
+--- @param level string
+--- @param levelnr integer
+--- @return fun(...:any): boolean?
+local function create_logger(level, levelnr)
+    return function(...)
+        if levelnr < current_log_level() then
+            return false
+        end
+        local argc = select('#', ...)
+        if argc == 0 then
+            return true
+        end
+        if not open_logfile() then
+            return false
+        end
+        local info = debug.getinfo(2, 'Sl')
+        local header = string.format(
+            '[%s][%s] ...%s:%s',
+            level,
+            os.date(log_date_format),
+            info.short_src:sub(-16),
+            info.currentline
+        )
+        local parts = { header }
+        for i = 1, argc do
+            local arg = select(i, ...)
+            table.insert(parts, arg == nil and 'nil' or format_func(arg))
+        end
+        assert(logfile)
+        logfile:write(table.concat(parts, '\t'), '\n')
+        logfile:flush()
+    end
+end
+
+--- @nodoc
+log.debug = create_logger('DEBUG', log_levels.DEBUG)
+
+--- @nodoc
+log.error = create_logger('ERROR', log_levels.ERROR)
+
+--- @nodoc
+log.info = create_logger('INFO', log_levels.INFO)
+
+--- @nodoc
+log.trace = create_logger('TRACE', log_levels.TRACE)
+
+--- @nodoc
+log.warn = create_logger('WARN', log_levels.WARN)
+
+--- @return number
+log.get_log_level = function()
+    return current_log_level()
+end
+
+-- --- Sets formatting function used to format logs
+-- ---@param handle function function to apply to logging arguments, pass vim.inspect for multi-line formatting
+-- function log.set_format_func(handle)
+--     assert(handle == vim.inspect or type(handle) == 'function', 'handle must be a function')
+--     format_func = handle
+-- end
 
 return log

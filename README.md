@@ -33,3 +33,16 @@ return {
 	end
 }
 ```
+
+## 📄 Logs
+Enabling logging in `neotest` automatically enables logging in `neotest-zig` as well:
+```lua
+require("neotest").setup({
+    log_level = vim.log.levels.TRACE,
+    -- ...
+})
+```
+The logs can be openned by:
+```vim
+:exe 'edit' stdpath('log').'/neotest-zig.log'
+```

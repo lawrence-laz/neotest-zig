@@ -34,6 +34,14 @@ return {
 }
 ```
 
+## ⭐ Features
+ - Can run tests in individual `.zig` files and projects using `build.zig` 
+   - Does not support a mix of individual files and `build.zig`:w
+   - `buil.zig` must have a standard `test` step
+ - Exact test filtering
+ - Timing all tests individually
+ - Supports POSIX environments: Linux, MacOS and Windows (via WSL)
+
 ## 📄 Logs
 Enabling logging in `neotest` automatically enables logging in `neotest-zig` as well:
 ```lua

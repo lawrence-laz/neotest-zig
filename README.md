@@ -1,5 +1,8 @@
 # Neotest Zig ⚡
 
+> [!NOTE]
+> Zig 0.12 version is being worked on in [branch v1.2.0](https://github.com/lawrence-laz/neotest-zig/tree/v1.2.0). It will feature a rewrite on the runner, which will enable testing and debugging projects using `build.zig`.
+
 [Neotest](https://github.com/nvim-neotest/neotest) test runner for [Zig](https://github.com/ziglang/zig).
 
 https://github.com/lawrence-laz/neotest-zig/assets/8823448/9a003d0a-9ba4-4077-aa1b-3c0c90717734

@@ -28,15 +28,12 @@ If applicable, add screenshots to help explain your problem.
 Enable logs with:
 ```lua
 require("neotest").setup({
-	adapters = {
-		require("neotest-zig") {
-			debug_log = true
-		}
-	}
+    log_level = vim.log.levels.TRACE,
+    -- ...
 })
 ```
-Read-only logs path is available in:
-`:lua =(vim.fn.stdpath("data") .. "/neotest-zig.log")`
+Open logs with:
+`:exe 'edit' stdpath('log').'/neotest-zig.log'`
 
 ## **Environment**
  - OS: 

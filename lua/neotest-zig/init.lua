@@ -33,9 +33,9 @@ end
 
 --- Create a function that will take directory and attempt to match the provided
 --- glob patterns against the contents of the directory.
---- This is a modified copy of a standard neotest function,
+--- [!] This is a modified copy of a standard neotest function,
 --- which avoids checking directories above the current working directory.
----@param ... string Patterns to match e.g "*.py"
+---@param ... string Patterns to match e.g "*.zig"
 ---@return fun(path: string): string | nil
 function M.match_root_pattern(...)
     local patterns = vim.tbl_flatten({ ... })
@@ -111,7 +111,7 @@ end
 function M.get_strategy_config(strategy, python, python_script, args)
     log.debug("Entered `get_strategy_config` with", strategy, python, python_script, args)
     local config = {
-        dap = nil, -- TODO: Implement debugging via DAP
+        dap = nil, -- DAP is handled in build spec functions.
     }
     if config[strategy] then
         local result = config[strategy]()
@@ -225,12 +225,52 @@ function M._build_spec_with_buildfile(args, build_file_path)
             temp_neotest_build_file_path = target_neotest_build_file_path,
         },
     }
+
+    if (args.strategy == "dap") then
+        test_program_paths = vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/*")
+        local _, programs_count = test_program_paths:gsub('\n', '\n')
+
+        local program_path = ""
+        if (programs_count > 0) then
+            program_path = vim.fn.input(
+                "Found multiple programs to debug, choose one:\n" .. test_program_paths .. "\n\nPath to executable: ",
+                vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/"),
+                "file")
+        else
+            program_path = test_program_paths
+        end
+
+        if (program_path == "") then
+            -- Cancelled
+            return nil;
+        end
+
+        run_spec.strategy = {
+            name = "Debug with neotest-zig",
+            type = "codelldb",
+            request = "launch",
+            program = function()
+                vim.fn.system(
+                    "zig build neotest-build --build-file neotest_build.zig -Dneotest-runner=\"/Users/llaz/git/neotest-zig/zig/neotest_runner.zig\"")
+                return program_path
+            end,
+            args = {
+                '--neotest-input-path', neotest_input_path,
+                '--neotest-results-path', neotest_results_path,
+                '--test-runner-logs-path', test_runner_logs_dir_path,
+                '--test-runner-log-level', '' .. log.get_log_level(),
+            },
+        }
+    end
     return run_spec
 end
 
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function M._build_spec_without_buildfile(args)
+    -- TODO: Handle non build.zig debugging, see "Equivalent to running the command `zig test --test-no-exec ...`"
+    -- zig test by specifying the executable location with -femit-bin --test-no-exec
+
     log.debug("Entered `_build_spec_without_buildfile`")
     local neotest_inputs = {}
     local source_path = ""
@@ -415,7 +455,6 @@ function M.results(spec, _, tree)
 
         ::continue::
     end
-
 
     for _, node in tree:iter_nodes() do
         if node:data().type ~= "test" then

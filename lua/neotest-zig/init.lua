@@ -439,7 +439,9 @@ function M.results(spec, _, tree)
             goto continue
         end
 
-        local test_results_file_path = vim.fs.joinpath(spec.context.test_results_dir_path, test_results_file_name)
+        local test_results_file_path = vim.fs.normalize(
+            spec.context.test_results_dir_path .. test_results_file_name
+        )
 
         log.trace("Trying to open results file", test_results_file_path)
         local success, test_results_json = pcall(lib.files.read, test_results_file_path)

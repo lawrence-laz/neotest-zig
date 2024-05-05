@@ -32,7 +32,7 @@ local function notify(msg, level)
     end
 end
 
-local logfilename = vim.fs.joinpath(vim.fn.stdpath('log'), 'neotest-zig.log')
+local logfilename = vim.fs.normalize(vim.fn.stdpath('log') .. '/' .. 'neotest-zig.log')
 
 vim.fn.mkdir(vim.fn.stdpath('log'), 'p')
 

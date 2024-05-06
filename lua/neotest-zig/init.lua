@@ -440,7 +440,7 @@ function M.results(spec, _, tree)
         end
 
         local test_results_file_path = vim.fs.normalize(
-            spec.context.test_results_dir_path .. test_results_file_name
+            spec.context.test_results_dir_path .. "/" .. test_results_file_name
         )
 
         log.trace("Trying to open results file", test_results_file_path)

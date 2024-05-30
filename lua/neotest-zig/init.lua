@@ -415,7 +415,7 @@ end
 ---@param _ neotest.StrategyResult
 ---@param tree neotest.Tree
 ---@return neotest.Result[]
-function M.results(spec, _, tree)
+function M.results(spec, result, tree)
     log.trace("Entered `results` with", spec, tree)
 
     if spec.context.temp_neotest_build_file_path then
@@ -426,6 +426,18 @@ function M.results(spec, _, tree)
     end
 
     local neotest_results = {}
+
+    if result.code ~= 0 then
+        local success, exit_error_result = pcall(lib.files.read, result.output)
+        local message = success and exit_error_result or
+            "test failed to run AND failed to read error output"
+        neotest_results["out"] = {
+            status = "error",
+            short = "build or run returned non-zero exit code",
+            errors = message,
+        }
+        return neotest_results
+    end
 
     if not lib.files.exists(spec.context.test_results_dir_path) then
         log.fatal("Dir `test_results_dir_path` does not exists", spec.context.test_results_dir_path)

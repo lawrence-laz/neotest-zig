@@ -25,6 +25,9 @@ local nio = require("nio")
 local M = {
     name = "neotest-zig",
     version = "v1.1.0",
+    dap = {
+        adapter = "",
+    }
 }
 
 function string.starts(String, Start)
@@ -149,6 +152,41 @@ function M._get_temp_file_path()
     return vim.fs.normalize(async.fn.tempname())
 end
 
+local function choose_program()
+    local test_program_paths = vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/*")
+    local _, programs_count = test_program_paths:gsub('\n', '\n')
+    log.debug("tests", test_program_paths)
+
+    local program_path = ""
+    if (programs_count > 0) then
+        program_path = vim.fn.input(
+            "Found multiple programs to debug, choose one:\n" .. test_program_paths .. "\n\nPath to executable: ",
+            vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/"),
+            "file")
+    else
+        program_path = test_program_paths
+    end
+    return program_path
+end
+
+local function build_async(build_file, runner_file, on_success, on_failure)
+    vim.system({
+        "zig",
+        "build",
+        "neotest-build",
+        "--build-file",
+        build_file,
+        "-Dneotest-runner=" .. runner_file
+
+    }, { text = true }, function(out)
+        if (out.code == 0) then
+            on_success(true)
+        else
+            log.error("out", out)
+            on_failure(out.stderr)
+        end
+    end)
+end
 ---@param args neotest.RunArgs
 ---@param build_file_path string
 ---@return neotest.RunSpec | nil
@@ -187,6 +225,10 @@ function M._build_spec_with_buildfile(args, build_file_path)
     log.debug("Successfully wrote test input into", neotest_input_path)
 
     local neotest_results_path = M._get_temp_file_path()
+    local context = {
+        test_results_dir_path = neotest_results_path,
+    }
+
     vim.loop.fs_mkdir(neotest_results_path, 493) -- Ensure tests results dir before running tests.
     local this_script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
     local source_neotest_build_file_path = vim.fs.normalize(
@@ -197,10 +239,13 @@ function M._build_spec_with_buildfile(args, build_file_path)
     local build_file_dir_path = build_file_path:match("(.*[/\\])")
     local target_neotest_build_file_path = build_file_dir_path .. "neotest_build.zig";
 
-    local success, errmsg = vim.loop.fs_copyfile(source_neotest_build_file_path, target_neotest_build_file_path)
-    if not success then
-        log.error("Could not copy from", source_neotest_build_file_path, "to", target_neotest_build_file_path)
-        return
+    if vim.fn.filereadable(target_neotest_build_file_path) == 0 then
+        local success, errmsg = vim.loop.fs_copyfile(source_neotest_build_file_path, target_neotest_build_file_path)
+        if not success then
+            log.error("Could not copy from", source_neotest_build_file_path, "to", target_neotest_build_file_path)
+            return
+        end
+        context.temp_neotest_build_file_path = target_neotest_build_file_path
     end
 
     -- Test runner logs have a separate directory, because
@@ -220,47 +265,45 @@ function M._build_spec_with_buildfile(args, build_file_path)
 
     local run_spec = {
         command = zig_test_command,
-        context = {
-            test_results_dir_path = neotest_results_path,
-            temp_neotest_build_file_path = target_neotest_build_file_path,
-        },
+        context = context,
     }
 
     if (args.strategy == "dap") then
-        test_program_paths = vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/*")
-        local _, programs_count = test_program_paths:gsub('\n', '\n')
-
-        local program_path = ""
-        if (programs_count > 0) then
-            program_path = vim.fn.input(
-                "Found multiple programs to debug, choose one:\n" .. test_program_paths .. "\n\nPath to executable: ",
-                vim.fn.glob(vim.fn.getcwd() .. "/zig-out/test/"),
-                "file")
-        else
-            program_path = test_program_paths
+        local temp_neotest_runner_file_path = build_file_dir_path .. "/neotest_runner.zig"
+        if vim.fn.filereadable(temp_neotest_runner_file_path) == 0 then
+            local runner_copy_success, _ = vim.loop.fs_copyfile(test_runner_path, temp_neotest_runner_file_path)
+            if not runner_copy_success then
+                log.error("Could not copy from", test_runner_path, "to", temp_neotest_runner_file_path)
+                return
+            end
+            run_spec.context.temp_neotest_runner_file_path = temp_neotest_runner_file_path
         end
-
-        if (program_path == "") then
-            -- Cancelled
-            return nil;
-        end
-
+        local future = nio.control.future()
+        build_async(target_neotest_build_file_path, "neotest_runner.zig",
+            function()
+                future.set()
+            end,
+            function(error)
+                future.set_error(error)
+            end
+        )
+        local build_success, build_error_message = pcall(future.wait)
         run_spec.strategy = {
             name = "Debug with neotest-zig",
-            type = "codelldb",
+            type = M.dap.adapter,
             request = "launch",
-            program = function()
-                vim.fn.system(
-                    "zig build neotest-build --build-file neotest_build.zig -Dneotest-runner=\"/Users/llaz/git/neotest-zig/zig/neotest_runner.zig\"")
-                return program_path
-            end,
             args = {
                 '--neotest-input-path', neotest_input_path,
                 '--neotest-results-path', neotest_results_path,
                 '--test-runner-logs-path', test_runner_logs_dir_path,
                 '--test-runner-log-level', '' .. log.get_log_level(),
-            },
+            }
         }
+        if build_success then
+            run_spec.strategy.program = choose_program
+        else
+            run_spec.context.dap_build_error = build_error_message
+        end
     end
     return run_spec
 end
@@ -410,6 +453,29 @@ function M._get_neotest_result(source_path, test_name, zig_test_results)
     return nil
 end
 
+local function handle_run_error(result, context)
+    if context.dap_build_error then
+        vim.notify("Build error when lauching tests:\n" .. context.dap_build_error, vim.log.levels.ERROR,
+            { title = "neotest-zig" })
+        return true, {
+            status = "error",
+            short = "build failed before launching debugger",
+            errors = context.dap_build_error
+        }
+    end
+    if result.code ~= 0 then
+        local success, exit_error_result = pcall(lib.files.read, result.output)
+        local message = success and exit_error_result or
+            "test failed to run AND failed to read error output"
+        return true, {
+            status = "error",
+            short = "build or run returned non-zero exit code",
+            errors = message,
+        }
+    end
+    return false, nil
+end
+
 ---@async
 ---@param spec neotest.RunSpec
 ---@param _ neotest.StrategyResult
@@ -425,19 +491,21 @@ function M.results(spec, result, tree)
         end
     end
 
-    local neotest_results = {}
-
-    if result.code ~= 0 then
-        local success, exit_error_result = pcall(lib.files.read, result.output)
-        local message = success and exit_error_result or
-            "test failed to run AND failed to read error output"
-        neotest_results["out"] = {
-            status = "error",
-            short = "build or run returned non-zero exit code",
-            errors = message,
-        }
-        return neotest_results
+    if spec.context.temp_neotest_runner_file_path then
+        local success = pcall(os.remove, spec.context.temp_neotest_runner_file_path)
+        if not success then
+            log.debug("Could not delete `temp_neotest_runner_file_path`", spec.context.temp_neotest_runner_file_path)
+        end
     end
+
+    local has_non_zero_exit, exit_message = handle_run_error(result, spec.context)
+    if has_non_zero_exit then
+        return {
+            run = exit_message
+        }
+    end
+
+    local neotest_results = {}
 
     if not lib.files.exists(spec.context.test_results_dir_path) then
         log.fatal("Dir `test_results_dir_path` does not exists", spec.context.test_results_dir_path)
@@ -463,6 +531,7 @@ function M.results(spec, result, tree)
         end
 
         local test_results = vim.json.decode(test_results_json, { luanil = { object = true, array = true } })
+
         log.trace("Decoded JSON", test_results)
 
         vim.list_extend(zig_test_results, test_results)
@@ -476,6 +545,7 @@ function M.results(spec, result, tree)
         end
 
         local test_name = M._get_zig_symbol_name_from_node(node)
+
         neotest_results[node:data().id] = M._get_neotest_result(node:data().path, test_name, zig_test_results)
             or {
                 status = "skipped",
@@ -500,6 +570,9 @@ setmetatable(M, {
 M.setup = function(opts)
     opts = opts or {}
 
+    M.dap = vim.tbl_extend("force", {
+        adapter = "lldb",
+    }, opts.dap or {})
     log.debug("Received options", opts)
     log.info("Setup successful, running version", M.version)
     return M

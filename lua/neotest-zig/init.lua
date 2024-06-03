@@ -70,9 +70,9 @@ function M.match_root_pattern(...)
     end
 end
 
-M.root = M.match_root_pattern(
-    "**/*.zig" -- Search for zig files in current directory.
-)
+---Find the project root directory given a current directory to work from.
+---Should no root be found, the adapter can still be used in a non-project context if a test file matches.
+M.root = M.match_root_pattern("build.zig")
 
 M.filter_dir = function(name, rel_path, root)
     log.trace("Entered filter_dir with", name, rel_path, root);

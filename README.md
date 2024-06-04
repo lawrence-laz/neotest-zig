@@ -27,12 +27,12 @@ return {
 	config = function()
 		require("neotest").setup({
 			adapters = {
-                -- Registration
+				-- Registration
 				require("neotest-zig")({
-                    dap = {
-                        adapter = "lldb",
-                    }
-                }),
+					dap = {
+						adapter = "lldb",
+					}
+				}),
 			}
 		})
 	end

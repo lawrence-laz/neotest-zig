@@ -225,9 +225,6 @@ function M._build_spec_with_buildfile(args, build_file_path)
     log.debug("Successfully wrote test input into", neotest_input_path)
 
     local neotest_results_path = M._get_temp_file_path()
-    local context = {
-        test_results_dir_path = neotest_results_path,
-    }
 
     vim.loop.fs_mkdir(neotest_results_path, 493) -- Ensure tests results dir before running tests.
     local this_script_path = vim.fs.normalize(debug.getinfo(1).source:sub(2))
@@ -244,7 +241,11 @@ function M._build_spec_with_buildfile(args, build_file_path)
         log.error("Could not copy from", source_neotest_build_file_path, "to", target_neotest_build_file_path)
         return
     end
-    context.temp_neotest_build_file_path = target_neotest_build_file_path
+
+    local context = {
+        temp_neotest_build_file_path = target_neotest_build_file_path,
+        test_results_dir_path = neotest_results_path,
+    }
 
     -- Test runner logs have a separate directory, because
     -- Zig may launch multiple processes, where each process

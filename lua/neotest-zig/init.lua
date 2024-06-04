@@ -269,17 +269,8 @@ function M._build_spec_with_buildfile(args, build_file_path)
     }
 
     if (args.strategy == "dap") then
-        local temp_neotest_runner_file_path = build_file_dir_path .. "/neotest_runner.zig"
-        if vim.fn.filereadable(temp_neotest_runner_file_path) == 0 then
-            local runner_copy_success, _ = vim.loop.fs_copyfile(test_runner_path, temp_neotest_runner_file_path)
-            if not runner_copy_success then
-                log.error("Could not copy from", test_runner_path, "to", temp_neotest_runner_file_path)
-                return
-            end
-            run_spec.context.temp_neotest_runner_file_path = temp_neotest_runner_file_path
-        end
         local future = nio.control.future()
-        build_async(target_neotest_build_file_path, "neotest_runner.zig",
+        build_async(target_neotest_build_file_path, test_runner_path,
             function()
                 future.set()
             end,
@@ -491,12 +482,6 @@ function M.results(spec, result, tree)
         end
     end
 
-    if spec.context.temp_neotest_runner_file_path then
-        local success = pcall(os.remove, spec.context.temp_neotest_runner_file_path)
-        if not success then
-            log.debug("Could not delete `temp_neotest_runner_file_path`", spec.context.temp_neotest_runner_file_path)
-        end
-    end
 
     local has_non_zero_exit, exit_message = handle_run_error(result, spec.context)
     if has_non_zero_exit then

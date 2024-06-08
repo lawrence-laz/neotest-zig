@@ -21,10 +21,28 @@ pub fn runnerLogFn(
 
     const prefix = "[" ++ comptime level.asText() ++ "] ";
 
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
+    lockStderr();
+    defer unlockStdErr();
     const stderr = std.io.getStdErr().writer();
     nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
+
+fn lockStderr() void {
+    if (@hasDecl(std.debug, "lockStdErr")) {
+        std.debug.lockStdErr();
+    } else {
+        // v0.12.0 compatability
+        std.debug.getStderrMutex().lock();
+    }
+}
+
+fn unlockStdErr() void {
+    if (@hasDecl(std.debug, "unlockStdErr")) {
+        std.debug.unlockStdErr();
+    } else {
+        // v0.12.0 compatability
+        std.debug.getStderrMutex().unlock();
+    }
 }
 
 const STATUS_FAILED = "failed";

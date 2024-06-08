@@ -288,6 +288,20 @@ pub fn main() !void {
         };
 
         const test_run_duration_in_ns = timer.read();
+
+        if (std.testing.allocator_instance.detectLeaks()) {
+            try test_results.append(
+                .{
+                    .source_path = test_input.source_path,
+                    .test_name = test_input.test_name,
+                    .output = test_input.output_path,
+                    .status = STATUS_FAILED,
+                    .short = "Memory leaked (see full output for more details)",
+                    .errors = null,
+                },
+            );
+        }
+
         const short_output = try std.fmt.allocPrint(
             gpa.allocator(),
             "Test passed in {}",

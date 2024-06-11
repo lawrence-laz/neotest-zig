@@ -388,7 +388,11 @@ function M.build_spec(args)
 
     local run_spec = nil
     local root_path = args.tree:root():data().path
-    local build_file_path = require("nio").fn.glob(root_path .. "**/build.zig")
+    local build_file_path_matches = vim.fn.glob(root_path .. "**/build.zig", false, true)
+    local build_file_path = ""
+    if (#build_file_path_matches > 0) then
+        build_file_path = build_file_path_matches[0]
+    end
     local use_build_file = build_file_path ~= nil and build_file_path ~= ""
 
     if use_build_file then

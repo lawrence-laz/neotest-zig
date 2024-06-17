@@ -388,12 +388,16 @@ function M.build_spec(args)
 
     local run_spec = nil
     local root_path = args.tree:root():data().path
-    local build_file_path_matches = vim.fn.glob(root_path .. "**/build.zig", false, true)
+    log.trace("Looking for `build.zig` file with glob pattern", root_path .. "**/build.zig")
+    local build_file_path_matches = require("nio").fn.glob(root_path .. "**/build.zig", false, true)
+    log.trace("Build file path matches", build_file_path_matches)
     local build_file_path = ""
     if (#build_file_path_matches > 0) then
-        build_file_path = build_file_path_matches[0]
+        log.trace("Found ", #build_file_path_matches, " `build.zig` files")
+        build_file_path = build_file_path_matches[1]
     end
     local use_build_file = build_file_path ~= nil and build_file_path ~= ""
+    log.trace("Use build file is set to", use_build_file)
 
     if use_build_file then
         run_spec = M._build_spec_with_buildfile(args, build_file_path)

@@ -1,13 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const platforrm_stub = if (builtin.os.tag == .windows) struct {
-    const platform = @import("platform/windows/platform.zig");
-} else struct {
-    const platform = @import("platform/posix/platform.zig");
-};
-
-const platform = platforrm_stub.platform;
+const platform = if (builtin.os.tag == .windows)
+    @import("platform/windows/platform.zig")
+else
+    @import("platform/posix/platform.zig");
 
 pub const std_options: std.Options = .{
     .log_level = .debug,

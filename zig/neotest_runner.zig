@@ -1,6 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const platform = if (builtin.os.tag == .windows)
+    @import("platform/windows/platform.zig")
+else
+    @import("platform/posix/platform.zig");
+
 pub const std_options: std.Options = .{
     .log_level = .debug,
     .logFn = runnerLogFn,
@@ -98,12 +103,6 @@ fn getFuncSymbolInfo(allocator: std.mem.Allocator, func: *const fn () anyerror!v
     return symbol;
 }
 
-fn redirectStdErrToFile(absolute_file_path: []const u8) !void {
-    const file = try std.fs.createFileAbsolute(absolute_file_path, .{});
-    defer file.close();
-    try std.posix.dup2(file.handle, std.posix.STDERR_FILENO);
-}
-
 fn getZigLogLevelFromVimLogLevel(vim_log_level: u8) std.log.Level {
     return switch (vim_log_level) {
         0, 1 => std.log.Level.debug,
@@ -149,7 +148,8 @@ pub fn main() !void {
         const logs_file_name = try std.fmt.bufPrint(&hash_buffer, "{d}", .{hash_value});
         break :blk try std.fs.path.join(gpa.allocator(), &.{ logs_dir_path, logs_file_name });
     };
-    try redirectStdErrToFile(logs_file_path);
+    const logs_file = try platform.redirectStdErrToFile(logs_file_path);
+    defer logs_file.close();
 
     for (args, 0..) |arg, i| {
         log.debug("arg[{d}] = {s}", .{ i, arg });
@@ -186,7 +186,8 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
 
     for (builtin.test_functions) |test_function| {
-        try redirectStdErrToFile(logs_file_path);
+        const file = try platform.redirectStdErrToFile(logs_file_path);
+        defer file.close();
 
         if (processed_tests == input.len) {
             // All requested tests have been processed.
@@ -217,7 +218,8 @@ pub fn main() !void {
 
         log.debug("Running test {s}::{s}", .{ test_input.source_path, test_input.test_name });
 
-        try redirectStdErrToFile(test_input.output_path);
+        const test_input_file = try platform.redirectStdErrToFile(test_input.output_path);
+        defer test_input_file.close();
 
         processed_tests += 1;
 
@@ -322,7 +324,7 @@ pub fn main() !void {
         );
     }
 
-    try std.posix.dup2(std.posix.STDERR_FILENO, std.posix.STDERR_FILENO);
+    try platform.restoreStdErr();
 
     const test_results_json = try std.json.stringifyAlloc(gpa.allocator(), test_results.items, .{});
     const results_file = try std.fs.createFileAbsolute(results_file_path, .{});

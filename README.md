@@ -45,7 +45,6 @@ return {
    - `buil.zig` must have a standard `test` step
  - Exact test filtering
  - Timing all tests individually
- - Supports POSIX environments: Linux, MacOS and Windows (via WSL)
 
 ## 📄 Logs
 Enabling logging in `neotest` automatically enables logging in `neotest-zig` as well:

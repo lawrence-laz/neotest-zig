@@ -80,6 +80,30 @@ const TestResult = struct {
     errors: ?[]Error,
 };
 
+const Symbol = if (builtin.zig_version.minor == 13)
+    std.debug.SymbolInfo
+else
+    std.debug.Symbol;
+
+fn getSymbolName(symbol: Symbol) []const u8 {
+    return if (builtin.zig_version.minor == 13)
+        symbol.symbol_name
+    else
+        symbol.name;
+}
+
+fn getSymbolFilename(symbol: Symbol) ?[]const u8 {
+    return if (builtin.zig_version.minor == 13)
+        if (symbol.line_info) |line_info| line_info.file_name else null
+    else if (symbol.source_location) |source_location| source_location.file_name else null;
+}
+
+fn getSymbolLine(symbol: Symbol) ?u64 {
+    return if (builtin.zig_version.minor == 13)
+        if (symbol.line_info) |line_info| line_info.line else null
+    else if (symbol.source_location) |source_location| source_location.line else null;
+}
+
 fn getTestInput(
     test_name: []const u8,
     source_path: []const u8,
@@ -95,7 +119,7 @@ fn getTestInput(
     return null;
 }
 
-fn getFuncSymbolInfo(allocator: std.mem.Allocator, func: *const fn () anyerror!void) !std.debug.SymbolInfo {
+fn getFuncSymbolInfo(allocator: std.mem.Allocator, func: *const fn () anyerror!void) !Symbol {
     const debug_info = try std.debug.getSelfDebugInfo();
     const func_address = @intFromPtr(func);
     const module = try debug_info.getModuleForAddress(func_address);
@@ -170,11 +194,12 @@ pub fn main() !void {
     for (builtin.test_functions) |test_function| {
         const test_func: *const fn () anyerror!void = test_function.func;
         const test_symbol = getFuncSymbolInfo(gpa.allocator(), test_func) catch continue;
-        log.debug(" > {s} \n", .{test_symbol.symbol_name});
-        if (test_symbol.line_info) |test_line_info| {
-            std.hash.autoHashStrat(&hasher, test_line_info.file_name, .Deep);
+        const test_symbol_name = getSymbolName(test_symbol);
+        log.debug(" > {s} \n", .{test_symbol_name});
+        if (getSymbolFilename(test_symbol)) |symbol_file_name| {
+            std.hash.autoHashStrat(&hasher, symbol_file_name, .Deep);
         }
-        std.hash.autoHashStrat(&hasher, test_symbol.symbol_name, .Deep);
+        std.hash.autoHashStrat(&hasher, test_symbol_name, .Deep);
     }
     const hash_value = hasher.final();
     var hash_buffer: [64]u8 = undefined;
@@ -199,8 +224,9 @@ pub fn main() !void {
             log.debug("getFuncSymbolInfo got error", .{});
             continue;
         };
-        const test_line_info = test_symbol.line_info orelse {
-            log.debug("test_symbol.line_info not found", .{});
+        const test_symbol_name = getSymbolName(test_symbol);
+        const test_file_name = getSymbolFilename(test_symbol) orelse {
+            log.debug("test_file_name not found", .{});
             continue;
         };
 
@@ -209,9 +235,9 @@ pub fn main() !void {
         // When `zig test` is used, neotest adapter provides the `--neotest-source-path`
         // argument, which provides the correct path.
         // https://github.com/ziglang/zig/issues/19556
-        const test_source_path = source_path orelse test_line_info.file_name;
+        const test_source_path = source_path orelse test_file_name;
 
-        const test_input = getTestInput(test_symbol.symbol_name, test_source_path, input) orelse {
+        const test_input = getTestInput(test_symbol_name, test_source_path, input) orelse {
             log.debug("getTestInput not found", .{});
             continue;
         };
@@ -235,11 +261,11 @@ pub fn main() !void {
                 const address = return_address - 1;
                 const module = try debug_info.getModuleForAddress(address);
                 const symbol_info = try module.getSymbolAtAddress(debug_info.allocator, address);
-                const line_info = symbol_info.line_info orelse {
+                const symbol_line = getSymbolLine(symbol_info) orelse {
                     std.debug.print("Unable to retrieve line info\n", .{});
                     return;
                 };
-                error_line = line_info.line - 1;
+                error_line = symbol_line - 1;
             }
 
             if (err == error.SkipZigTest) {

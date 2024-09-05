@@ -126,9 +126,9 @@ end
 
 M._test_treesitter_query = [[
 	;;query
-	(TestDecl
-		[(IDENTIFIER) (STRINGLITERALSINGLE)] @test.name
-	) @test.definition
+    (test_declaration
+        [(identifier) (string)] @test.name
+    ) @test.definition
 ]]
 
 function M._does_file_contain_tests(file_path)

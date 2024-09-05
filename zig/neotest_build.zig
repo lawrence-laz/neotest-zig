@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
 
 /// Builds original graph from user's `build.zig` file.
 fn buildOriginalBuildGraph(b: *std.Build) void {
-    const can_build_function_return_error = @typeInfo(@typeInfo(@TypeOf(original_build_file.build)).Fn.return_type.?) == .ErrorUnion;
+    const can_build_function_return_error = @typeInfo(@typeInfo(@TypeOf(original_build_file.build)).@"fn".return_type.?) == .error_union;
     if (can_build_function_return_error) {
         original_build_file.build(b) catch |err| {
             std.log.err("Function `build` from `build.zig` returned an error: {}", .{err});

@@ -137,6 +137,11 @@ fn getZigLogLevelFromVimLogLevel(vim_log_level: u8) std.log.Level {
     };
 }
 
+pub inline fn fuzzInput(options: std.testing.FuzzInputOptions) []const u8 {
+    _ = options;
+    return "";
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var test_results = std.ArrayList(TestResult).init(gpa.allocator());

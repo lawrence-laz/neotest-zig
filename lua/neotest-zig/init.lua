@@ -27,7 +27,8 @@ local M = {
     version = "v1.1.0",
     dap = {
         adapter = "",
-    }
+    },
+    path_to_zig = "zig",
 }
 
 function string.starts(String, Start)
@@ -171,7 +172,7 @@ end
 
 local function build_async(build_file, runner_file, on_success, on_failure)
     vim.system({
-        "zig",
+        M.path_to_zig,
         "build",
         "neotest-build",
         "--build-file",
@@ -565,6 +566,11 @@ M.setup = function(opts)
     M.dap = vim.tbl_extend("force", {
         adapter = "lldb",
     }, opts.dap or {})
+
+    if opts.path_to_zig then
+      M.path_to_zig = opts.path_to_zig
+    end
+
     log.debug("Received options", opts)
     log.info("Setup successful, running version", M.version)
     return M

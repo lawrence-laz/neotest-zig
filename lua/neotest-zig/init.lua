@@ -254,7 +254,8 @@ function M._build_spec_with_buildfile(args, build_file_path)
     local test_runner_logs_dir_path = M._get_temp_file_path()
     vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
 
-    local zig_test_command = 'zig build test' ..
+    local zig_test_command = M.path_to_zig ..
+        ' build test' ..
         ' --build-file "' .. target_neotest_build_file_path .. '"' ..
         ' -Dneotest-runner="' .. test_runner_path .. '"' ..
         ' -- ' ..
@@ -358,7 +359,8 @@ function M._build_spec_without_buildfile(args)
     local test_runner_logs_dir_path = M._get_temp_file_path()
     vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
 
-    local zig_test_command = 'zig test ' ..
+    local zig_test_command = M.path_to_zig ..
+        ' test ' ..
         source_path ..
         ' --test-runner "' .. zig_test_runner_path .. '" ' ..
         ' --test-cmd-bin' ..

@@ -27,7 +27,8 @@ local M = {
     version = "v1.1.0",
     dap = {
         adapter = "",
-    }
+    },
+    path_to_zig = "zig",
 }
 
 function string.starts(String, Start)
@@ -171,7 +172,7 @@ end
 
 local function build_async(build_file, runner_file, on_success, on_failure)
     vim.system({
-        "zig",
+        M.path_to_zig,
         "build",
         "neotest-build",
         "--build-file",
@@ -253,7 +254,8 @@ function M._build_spec_with_buildfile(args, build_file_path)
     local test_runner_logs_dir_path = M._get_temp_file_path()
     vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
 
-    local zig_test_command = 'zig build test' ..
+    local zig_test_command = M.path_to_zig ..
+        ' build test' ..
         ' --build-file "' .. target_neotest_build_file_path .. '"' ..
         ' -Dneotest-runner="' .. test_runner_path .. '"' ..
         ' -- ' ..
@@ -357,7 +359,8 @@ function M._build_spec_without_buildfile(args)
     local test_runner_logs_dir_path = M._get_temp_file_path()
     vim.loop.fs_mkdir(test_runner_logs_dir_path, 493)
 
-    local zig_test_command = 'zig test ' ..
+    local zig_test_command = M.path_to_zig ..
+        ' test ' ..
         source_path ..
         ' --test-runner "' .. zig_test_runner_path .. '" ' ..
         ' --test-cmd-bin' ..
@@ -565,6 +568,11 @@ M.setup = function(opts)
     M.dap = vim.tbl_extend("force", {
         adapter = "lldb",
     }, opts.dap or {})
+
+    if opts.path_to_zig then
+      M.path_to_zig = opts.path_to_zig
+    end
+
     log.debug("Received options", opts)
     log.info("Setup successful, running version", M.version)
     return M

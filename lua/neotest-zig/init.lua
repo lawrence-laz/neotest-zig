@@ -42,7 +42,7 @@ end
 ---@param ... string Patterns to match e.g "*.zig"
 ---@return fun(path: string): string | nil
 function M.match_root_pattern(...)
-    local patterns = vim.tbl_flatten({ ... })
+    local patterns = vim.iter({ ... }):flatten():totable()
     return function(start_path)
         log.trace("Entered match_root_pattern with", start_path)
         local start_parents = Path:new(start_path):parents()

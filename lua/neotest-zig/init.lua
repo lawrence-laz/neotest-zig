@@ -35,6 +35,11 @@ function string.starts(String, Start)
     return string.sub(String, 1, string.len(Start)) == Start
 end
 
+local tbl_flatten = function(table)
+    return nio.fn.has("nvim-0.11") == 1 and vim.iter(table):flatten():totable()
+        or vim.tbl_flatten(table)
+end
+
 --- Create a function that will take directory and attempt to match the provided
 --- glob patterns against the contents of the directory.
 --- [!] This is a modified copy of a standard neotest function,
@@ -42,7 +47,7 @@ end
 ---@param ... string Patterns to match e.g "*.zig"
 ---@return fun(path: string): string | nil
 function M.match_root_pattern(...)
-    local patterns = vim.iter({ ... }):flatten():totable()
+    local patterns = tbl_flatten({ ... })
     return function(start_path)
         log.trace("Entered match_root_pattern with", start_path)
         local start_parents = Path:new(start_path):parents()

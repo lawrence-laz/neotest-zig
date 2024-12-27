@@ -9,6 +9,7 @@ https://github.com/lawrence-laz/neotest-zig/assets/8823448/9a003d0a-9ba4-4077-aa
 
 ## ⚙️ Requirements
 - [`zig` v0.14.0-dev installed](https://ziglang.org/download/) and available in PATH
+    - If you are using `zig` v0.13, then use the tagged `neotest-zig` 1.3.* version.
 - [Neotest](https://github.com/nvim-neotest/neotest#installation)
 - [Treesitter](https://github.com/nvim-treesitter/nvim-treesitter#installation) with [Zig support](https://github.com/maxxnino/tree-sitter-zig)
 

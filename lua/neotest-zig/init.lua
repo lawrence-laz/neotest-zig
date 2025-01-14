@@ -403,7 +403,21 @@ function M.build_spec(args)
     local build_file_path = ""
     if (#build_file_path_matches > 0) then
         log.trace("Found ", #build_file_path_matches, " `build.zig` files")
-        build_file_path = build_file_path_matches[1]
+
+        -- When multiple build.zig files are found the shortest one is chosen for now,
+        -- with hopes that it's the "main" build.zig inteded to be used for running tests, while
+        -- others are probably for example or benchmark programs.
+        -- This assumption might be incorrect, if you encounter such a case please open an issue
+        -- and let's discuss how this can be handled "more correctly".
+        local shortest_path_len = math.huge
+        for i = 1, #build_file_path_matches do
+            local potential_build_file_path = build_file_path_matches[i]
+            local potential_file_path_len = string.len(potential_build_file_path)
+            if potential_file_path_len < shortest_path_len then
+                shortest_path_len = potential_file_path_len
+                build_file_path = potential_build_file_path
+            end
+        end
     end
     local use_build_file = build_file_path ~= nil and build_file_path ~= ""
     log.trace("Use build file is set to", use_build_file)
@@ -576,7 +590,7 @@ M.setup = function(opts)
     }, opts.dap or {})
 
     if opts.path_to_zig then
-      M.path_to_zig = opts.path_to_zig
+        M.path_to_zig = opts.path_to_zig
     end
 
     log.debug("Received options", opts)

@@ -294,7 +294,8 @@ function M._build_spec_with_buildfile(args, build_file_path)
                 '--neotest-results-path', neotest_results_path,
                 '--test-runner-logs-path', test_runner_logs_dir_path,
                 '--test-runner-log-level', '' .. log.get_log_level(),
-            }
+            },
+            initCommands = { "command source ~/.lldbinit" },
         }
         if build_success then
             run_spec.strategy.program = choose_program

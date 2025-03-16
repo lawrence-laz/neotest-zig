@@ -67,7 +67,10 @@ fn replaceTestRunner(b: *std.Build) void {
         }
         for (maybe_test_step_run.dependencies.items) |maybe_test_step_compile| {
             const test_step_compile = maybe_test_step_compile.cast(std.Build.Step.Compile) orelse continue;
-            test_step_compile.test_runner = if (test_runner) |x| .{ .cwd_relative = x } else null;
+            test_step_compile.test_runner = if (test_runner) |x| .{
+                .path = .{ .cwd_relative = x },
+                .mode = .simple,
+            } else null;
         }
     }
 }

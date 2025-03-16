@@ -137,9 +137,14 @@ fn getZigLogLevelFromVimLogLevel(vim_log_level: u8) std.log.Level {
     };
 }
 
-pub inline fn fuzzInput(options: std.testing.FuzzInputOptions) []const u8 {
+pub inline fn fuzz(
+    context: anytype,
+    comptime testOne: fn (context: @TypeOf(context), input: []const u8) anyerror!void,
+    options: std.testing.FuzzInputOptions,
+) anyerror!void {
+    _ = testOne;
     _ = options;
-    return "";
+    return;
 }
 
 pub fn main() !void {
